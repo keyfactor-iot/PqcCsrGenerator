@@ -1,10 +1,6 @@
 services:
   pqc-gen:
     build: .
-    # Run the process as your specific User ID and Group ID
-    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./out:/output
-    environment:
-      - CSR_OUTDIR=/output
     command: ["-Dcsr.outdir=/output", "-Dcsr.subject=CN=My-PQC-Test,O=Keyfactor,C=US", "ML-DSA-65"]

@@ -1,24 +1,15 @@
-# Stage 1: Build with JDK 24
 FROM eclipse-temurin:24-jdk AS build
 WORKDIR /app
-
-# Install Maven
 RUN apt-get update && apt-get install -y maven git
-
-# Clone and Build
 RUN git clone https://github.com/keyfactor-iot/PqcCsrGenerator.git .
 RUN mvn clean package -DskipTests
 
-# Stage 2: Final Runtime Image (Java 24 JRE)
 FROM eclipse-temurin:24-jre
 WORKDIR /app
+COPY --from=build /app/target/PqcCsrGenerator.jar app.jar
 
-# Copy the built fat jar file
-COPY --from=build /app/target/*-jar-with-dependencies.jar app.jar
+# Create a wrapper script to fix the Java argument order
+RUN echo '#!/bin/sh\nprops=""\nargs=""\nfor arg in "$@"; do\n  case $arg in\n    -D*) props="$props $arg" ;;\n    *) args="$args $arg" ;;\n  esac\ndone\nexec java $props -jar app.jar $args' > /entrypoint.sh && chmod +x /entrypoint.sh
 
-# Create the directory and grant global write access
-# so the non-root user can write to the mount point
 RUN mkdir /output && chmod 777 /output
-
-# Flexible Entrypoint
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["/entrypoint.sh"]
