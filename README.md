@@ -23,10 +23,10 @@ First, ensure you have the required Docker configuration files. You can download
 
 ```bash
 # Download Dockerfile
-curl -O [https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/Dockerfile](https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/Dockerfile)
+curl -O https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/Dockerfile
 
 # Download docker-compose.yaml
-curl -O [https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/docker-compose.yaml](https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/docker-compose.yaml)
+curl -O https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/docker-compose.yaml
 ```
 
 Next, ensure you have an `out` directory created in your project root to receive the generated files:
