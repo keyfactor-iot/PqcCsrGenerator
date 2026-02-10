@@ -138,8 +138,8 @@ public class PqcCsrGenerator {
 		ALGORITHMS.put("SLH-DSA-SHAKE-256s", new AlgConfig("SLH-DSA", SLHDSAParameterSpec.slh_dsa_shake_256s, "SLH-DSA"));
 
 		// ── Falcon / FN-DSA — Lattice (FFT/NTRU), pending NIST standardization ───
-		ALGORITHMS.put("FALCON-512",  new AlgConfig("Falcon", FalconParameterSpec.falcon_512,  "Falcon"));
-		ALGORITHMS.put("FALCON-1024", new AlgConfig("Falcon", FalconParameterSpec.falcon_1024, "Falcon"));
+		ALGORITHMS.put("FALCON-512",  new AlgConfig("Falcon", FalconParameterSpec.falcon_512,  "FALCON-512"));
+		ALGORITHMS.put("FALCON-1024", new AlgConfig("Falcon", FalconParameterSpec.falcon_1024, "FALCON-1024"));
 
 		// ── Classical algorithms (for comparison / hybrid use) ────────
 		ALGORITHMS.put("Ed25519",  new AlgConfig("Ed25519", null, "Ed25519"));
@@ -341,7 +341,6 @@ public class PqcCsrGenerator {
 			KeyPair keyPair, String subjectDn, String sigAlg) throws Exception {
 
 		ContentSigner signer = new JcaContentSignerBuilder(sigAlg)
-				.setProvider("BC")
 				.build(keyPair.getPrivate());
 
 		return new JcaPKCS10CertificationRequestBuilder(

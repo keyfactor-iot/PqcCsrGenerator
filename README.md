@@ -15,7 +15,7 @@ This project demonstrates how to use Bouncy Castle to generate key pairs and CSR
 
 ## Prerequisites
 
-- **Java 25** or later
+- **Java 24** or later
 - **Maven 3.8+**
 
 ## Quick Start
