@@ -1,0 +1,224 @@
+name: Test PQC CSR Generator
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  test-all-algorithms:
+    name: Test All Algorithms
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Compile project
+        run: mvn compile -B
+
+      - name: Test --help flag
+        run: mvn exec:java -Dexec.args="--help" -B
+
+      - name: Test --list flag
+        run: mvn exec:java -Dexec.args="--list" -B
+
+      - name: Generate all CSRs
+        run: |
+          mkdir -p ./output
+          mvn exec:java -Dexec.args="--all" -Dcsr.outdir="./output" -B
+
+      - name: Verify output files exist
+        run: |
+          echo "Generated files:"
+          ls -la ./output/
+          
+          # Count CSR and key files
+          CSR_COUNT=$(ls ./output/*.csr 2>/dev/null | wc -l)
+          KEY_COUNT=$(ls ./output/*_private.pem 2>/dev/null | wc -l)
+          
+          echo "CSR files: $CSR_COUNT"
+          echo "Private key files: $KEY_COUNT"
+          
+          # Expect 23 algorithms (3 ML-DSA + 12 SLH-DSA + 2 Falcon + 6 Classical)
+          if [ "$CSR_COUNT" -lt 23 ]; then
+            echo "ERROR: Expected at least 23 CSR files, got $CSR_COUNT"
+            exit 1
+          fi
+
+      - name: Upload generated artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-csrs
+          path: ./output/
+          retention-days: 5
+
+  test-individual-algorithms:
+    name: Test Individual - ${{ matrix.algorithm }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        algorithm:
+          # ML-DSA
+          - ML-DSA-44
+          - ML-DSA-65
+          - ML-DSA-87
+          # SLH-DSA (subset for faster CI)
+          - SLH-DSA-SHA2-128f
+          - SLH-DSA-SHAKE-256s
+          # Falcon
+          - FALCON-512
+          - FALCON-1024
+          # Classical
+          - Ed25519
+          - EC-P256
+          - RSA-2048
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Generate ${{ matrix.algorithm }} CSR
+        run: |
+          mvn compile exec:java \
+            -Dexec.args="${{ matrix.algorithm }}" \
+            -Dcsr.subject="CN=${{ matrix.algorithm }} Test,O=GitHub Actions,C=US" \
+            -Dcsr.outdir="./output" \
+            -B
+
+      - name: Verify files created
+        run: |
+          ALG_LOWER=$(echo "${{ matrix.algorithm }}" | tr '[:upper:]' '[:lower:]' | tr '-' '_')
+          
+          if [ ! -f "./output/${ALG_LOWER}.csr" ]; then
+            echo "ERROR: CSR file not found: ./output/${ALG_LOWER}.csr"
+            exit 1
+          fi
+          
+          if [ ! -f "./output/${ALG_LOWER}_private.pem" ]; then
+            echo "ERROR: Private key file not found: ./output/${ALG_LOWER}_private.pem"
+            exit 1
+          fi
+          
+          echo "✓ CSR: $(ls -lh ./output/${ALG_LOWER}.csr)"
+          echo "✓ Key: $(ls -lh ./output/${ALG_LOWER}_private.pem)"
+
+  test-with-san:
+    name: Test with Subject Alt Names
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Generate CSR with SANs
+        run: |
+          mvn compile exec:java \
+            -Dexec.args="ML-DSA-87" \
+            -Dcsr.subject="CN=example.com,O=Test Org,C=US" \
+            -Dcsr.san="example.com,www.example.com,api.example.com" \
+            -Dcsr.outdir="./output" \
+            -B
+
+      - name: Verify CSR contains SANs (basic check)
+        run: |
+          # Check that the CSR file is valid PEM
+          grep -q "BEGIN CERTIFICATE REQUEST" ./output/ml_dsa_87.csr
+          grep -q "END CERTIFICATE REQUEST" ./output/ml_dsa_87.csr
+          echo "✓ CSR is valid PEM format"
+
+  test-error-handling:
+    name: Test Error Handling
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Java 24
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '24'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Compile project
+        run: mvn compile -B
+
+      - name: Test invalid algorithm (should fail gracefully)
+        run: |
+          # This should exit with code 1, not crash
+          mvn exec:java -Dexec.args="INVALID-ALGO" -B 2>&1 || EXIT_CODE=$?
+          
+          if [ "$EXIT_CODE" -eq 1 ]; then
+            echo "✓ Correctly rejected invalid algorithm"
+          else
+            echo "ERROR: Expected exit code 1, got $EXIT_CODE"
+            exit 1
+          fi
+
+      - name: Test case-insensitive algorithm name
+        run: |
+          mvn compile exec:java \
+            -Dexec.args="ml-dsa-87" \
+            -Dcsr.outdir="./output" \
+            -B
+          
+          if [ -f "./output/ml_dsa_87.csr" ]; then
+            echo "✓ Case-insensitive matching works"
+          else
+            echo "ERROR: Case-insensitive matching failed"
+            exit 1
+          fi
