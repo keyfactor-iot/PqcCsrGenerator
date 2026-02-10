@@ -4,253 +4,124 @@ A Java command-line tool for generating **PKCS#10 Certificate Signing Requests (
 
 ## Overview
 
-This project demonstrates how to use Bouncy Castle to generate key pairs and CSRs for the new NIST post-quantum signature standards, as well as classical algorithms for comparison:
+This project demonstrates how to use Bouncy Castle to generate key pairs and CSRs for the new NIST post-quantum signature standards (FIPS 204, FIPS 205), as well as classical algorithms for comparison.
 
 | Algorithm Family | Standard | Description |
 |------------------|----------|-------------|
 | **ML-DSA** | FIPS 204 | Lattice-based (Module-Lattice Digital Signature Algorithm) |
 | **SLH-DSA** | FIPS 205 | Hash-based (Stateless Hash-Based Digital Signature Algorithm) |
-| **Falcon** | Pending (FN-DSA) | Lattice-based using NTRU and FFT |
 | **Classical** | — | RSA, ECDSA (P-256/P-384), EdDSA (Ed25519/Ed448) |
 
-## Prerequisites
+---
 
-- **Java 24** or later
+## 🐋 Running with Docker (Recommended)
+
+Using Docker allows you to run the generator without manually installing JDK 24 or Maven on your host machine.
+
+### 1. Setup
+First, ensure you have the required Docker configuration files. You can download them directly from the repository:
+
+```bash
+# Download Dockerfile
+curl -O [https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/Dockerfile](https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/Dockerfile)
+
+# Download docker-compose.yaml
+curl -O [https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/docker-compose.yaml](https://raw.githubusercontent.com/keyfactor-iot/PqcCsrGenerator/main/docker-compose.yaml)
+```
+
+Next, ensure you have an `out` directory created in your project root to receive the generated files:
+```bash
+mkdir out
+```
+
+### 2. Build and Run
+The simplest way to run the tool is using Docker Compose. This will build the container and run the default algorithm (**ML-DSA-65**):
+
+```bash
+# On Mac or Windows (Docker Desktop)
+docker-compose up --build
+
+# On Linux (Fixes file permission issues)
+UID=$(id -u) GID=$(id -g) docker-compose up --build
+```
+
+### 3. Customizing the Execution
+You can override the algorithm or subject DN by passing arguments to `docker-compose run`. This command spins up a fresh container for a single execution:
+
+**Generate a specific algorithm:**
+```bash
+docker-compose run --rm pqc-gen "SLH-DSA-SHA2-128s"
+```
+
+**Generate with a custom Subject DN:**
+```bash
+docker-compose run --rm pqc-gen -Dcsr.subject="CN=Keyfactor-PQC,O=Keyfactor,C=US" "ML-DSA-87"
+```
+
+### Troubleshooting Docker
+* **Empty `out` directory:** Ensure you are running the docker command from the same folder that contains the `docker-compose.yaml` and `out` directory.
+* **"Permission Denied" (Linux):** If files in `out` are locked by root, run: `sudo chown -R $USER:$USER out/` and then use the `UID/GID` command above for future runs.
+
+---
+
+## 🛠 Manual Building (Local Java 24)
+
+### Prerequisites
+- **Java 24** (Required for the latest PQC features)
 - **Maven 3.8+**
 
-## Quick Start
-
+### Compile and Package
+Because this project requires Bouncy Castle dependencies, you must build the "Fat JAR":
 ```bash
-# Clone the repository
-git clone https://github.com/keyfactor/pqc-csr-generator.git
-cd pqc-csr-generator
-
-# Generate an ML-DSA-87 CSR (highest security level)
-mvn compile exec:java -Dexec.args="ML-DSA-87"
-
-# List all supported algorithms
-mvn compile exec:java -Dexec.args="--list"
+mvn clean package
 ```
 
-## Usage
-
-### Basic Usage
-
+### Run from JAR
 ```bash
-mvn compile exec:java -Dexec.args="<algorithm>"
+java -jar target/PqcCsrGenerator.jar "ML-DSA-65"
 ```
 
-### Command-Line Options
+---
 
-| Option | Description |
-|--------|-------------|
-| `<algorithm>` | Generate CSR for the specified algorithm |
-| `--all` | Generate CSRs for all supported algorithms |
-| `--list` | List all supported algorithms |
-| `--help` | Show help message |
+## Configuration Reference
 
-### Configuration (System Properties)
-
+### System Properties
 | Property | Default | Description |
 |----------|---------|-------------|
 | `-Dcsr.subject` | `CN=Test Certificate,O=Example Org,C=US` | X.500 Subject DN |
-| `-Dcsr.outdir` | `.` (current directory) | Output directory for generated files |
-| `-Dcsr.san` | *(empty)* | Comma-separated Subject Alternative Names |
+| `-Dcsr.outdir` | `/output` (Docker) or `.` | Output directory for keys and CSRs |
 
-### Examples
+### Output Files
+For an algorithm like `ML-DSA-65`, the tool generates:
+- `ml_dsa_65.csr`: The PEM-encoded Certificate Signing Request.
+- `ml_dsa_65_private.pem`: The PEM-encoded Private Key.
 
-```bash
-# Generate ML-DSA-87 CSR
-mvn compile exec:java -Dexec.args="ML-DSA-87"
-
-# Generate all supported algorithms
-mvn compile exec:java -Dexec.args="--all"
-
-# Custom subject DN
-mvn compile exec:java -Dexec.args="ML-DSA-65" \
-    -Dcsr.subject="CN=My Application,O=My Company,C=US"
-
-# With Subject Alternative Names
-mvn compile exec:java -Dexec.args="EC-P256" \
-    -Dcsr.san="example.com,www.example.com,api.example.com"
-
-# Custom output directory
-mvn compile exec:java -Dexec.args="FALCON-512" \
-    -Dcsr.outdir="./certs"
-
-# Full example with all options
-mvn compile exec:java -Dexec.args="ML-DSA-87" \
-    -Dcsr.subject="CN=prod.example.com,O=Example Corp,OU=Engineering,C=US" \
-    -Dcsr.san="prod.example.com,www.example.com" \
-    -Dcsr.outdir="./output"
-```
+---
 
 ## Supported Algorithms
 
-### ML-DSA (FIPS 204) — Lattice-Based
+### ML-DSA (FIPS 204)
+- `ML-DSA-44`, `ML-DSA-65`, `ML-DSA-87`
 
-| Algorithm | Security Level | Public Key | Signature |
-|-----------|----------------|------------|-----------|
-| `ML-DSA-44` | ~AES-128 | 1,312 bytes | 2,420 bytes |
-| `ML-DSA-65` | ~AES-192 | 1,952 bytes | 3,293 bytes |
-| `ML-DSA-87` | ~AES-256 | 2,592 bytes | 4,595 bytes |
+### SLH-DSA (FIPS 205)
+- `SLH-DSA-SHA2-128f`, `SLH-DSA-SHA2-128s`
+- `SLH-DSA-SHAKE-128f`, `SLH-DSA-SHAKE-128s`
+- *(And 192/256 variants)*
 
-### SLH-DSA (FIPS 205) — Hash-Based
+### Falcon (Pending)
+- `FALCON-512`, `FALCON-1024`
 
-Variants use either SHA2 or SHAKE hash functions. The suffix indicates:
-- `f` = **fast** signing (larger signatures)
-- `s` = **small** signatures (slower signing)
+---
 
-| Algorithm | Hash | Trade-off |
-|-----------|------|-----------|
-| `SLH-DSA-SHA2-128f` | SHA2-256 | Fast signing |
-| `SLH-DSA-SHA2-128s` | SHA2-256 | Small signature |
-| `SLH-DSA-SHA2-192f` | SHA2-384 | Fast signing |
-| `SLH-DSA-SHA2-192s` | SHA2-384 | Small signature |
-| `SLH-DSA-SHA2-256f` | SHA2-512 | Fast signing |
-| `SLH-DSA-SHA2-256s` | SHA2-512 | Small signature |
-| `SLH-DSA-SHAKE-128f` | SHAKE256 | Fast signing |
-| `SLH-DSA-SHAKE-128s` | SHAKE256 | Small signature |
-| `SLH-DSA-SHAKE-192f` | SHAKE256 | Fast signing |
-| `SLH-DSA-SHAKE-192s` | SHAKE256 | Small signature |
-| `SLH-DSA-SHAKE-256f` | SHAKE256 | Fast signing |
-| `SLH-DSA-SHAKE-256s` | SHAKE256 | Small signature |
+## Troubleshooting Manual Builds
 
-### Falcon (Pending NIST Standardization as FN-DSA)
+**"No main manifest attribute"**
+This happens if you try to run the "thin" jar. Always use the jar produced by the `maven-assembly-plugin` (located in `target/PqcCsrGenerator.jar`).
 
-| Algorithm | Security Level | Public Key | Signature |
-|-----------|----------------|------------|-----------|
-| `FALCON-512` | ~AES-128 | 897 bytes | ~666 bytes |
-| `FALCON-1024` | ~AES-256 | 1,793 bytes | ~1,280 bytes |
+**"UnsupportedClassVersionError"**
+Ensure your local `java -version` is 24. If using Docker, this is handled automatically.
 
-### Classical Algorithms (for Comparison)
-
-| Algorithm | Type | Notes |
-|-----------|------|-------|
-| `Ed25519` | EdDSA | Curve25519, 128-bit security |
-| `Ed448` | EdDSA | Curve448, 224-bit security |
-| `EC-P256` | ECDSA | NIST P-256 curve |
-| `EC-P384` | ECDSA | NIST P-384 curve |
-| `RSA-2048` | RSA | SHA256withRSA |
-| `RSA-3072` | RSA | SHA256withRSA |
-| `RSA-4096` | RSA | SHA256withRSA |
-
-## Output Files
-
-For each algorithm (e.g., `ML-DSA-87`), the tool generates:
-
-| File | Description |
-|------|-------------|
-| `ml_dsa_87.csr` | PKCS#10 Certificate Signing Request (PEM format) |
-| `ml_dsa_87_private.pem` | Private key (PEM format) |
-
-## Verifying Output
-
-### View CSR Contents
-
-```bash
-# Using OpenSSL 3.5+ (required for PQC algorithms)
-openssl req -in ml_dsa_87.csr -text -noout
-
-# For classical algorithms (any OpenSSL version)
-openssl req -in ec_p256.csr -text -noout
-```
-
-### Verify CSR Signature
-
-```bash
-openssl req -in ml_dsa_87.csr -verify -noout
-```
-
-> **Note:** PQC algorithm support requires OpenSSL 3.5 or later. For older OpenSSL versions, only classical algorithms can be inspected.
-
-## Project Structure
-
-```
-pqc-csr-generator/
-├── pom.xml
-├── README.md
-└── src/
-    └── main/
-        └── java/
-            └── com/
-                └── keyfactor/
-                    └── pqc/
-                        └── PqcCsrGenerator.java
-```
-
-## Dependencies
-
-| Dependency | Version | Purpose |
-|------------|---------|---------|
-| `bcprov-jdk18on` | 1.83 | Bouncy Castle Provider (core crypto) |
-| `bcpkix-jdk18on` | 1.83 | PKCS#10 CSR builder, X.509, CMS |
-| `bcutil-jdk18on` | 1.83 | PEM I/O utilities |
-
-## Building
-
-```bash
-# Compile
-mvn compile
-
-# Package as JAR
-mvn package
-
-# Run tests (if any)
-mvn test
-
-# Clean build artifacts
-mvn clean
-```
-
-## Running from JAR
-
-```bash
-# Package the application
-mvn package
-
-# Run with dependencies on classpath
-mvn exec:java -Dexec.args="ML-DSA-87"
-```
-
-## Troubleshooting
-
-### "Algorithm not found" Error
-
-Ensure Bouncy Castle providers are registered. The application handles this automatically, but if running in a different context, add:
-
-```java
-Security.addProvider(new BouncyCastleProvider());
-Security.addProvider(new BouncyCastlePQCProvider());
-```
-
-### Java Version Issues
-
-This project requires Java 25. Verify your version:
-
-```bash
-java -version
-```
-
-If using multiple Java versions, set `JAVA_HOME`:
-
-```bash
-export JAVA_HOME=/path/to/jdk-25
-mvn compile exec:java -Dexec.args="ML-DSA-87"
-```
-
-## References
-
-- [NIST Post-Quantum Cryptography](https://csrc.nist.gov/projects/post-quantum-cryptography)
-- [FIPS 204 - ML-DSA Standard](https://csrc.nist.gov/pubs/fips/204/final)
-- [FIPS 205 - SLH-DSA Standard](https://csrc.nist.gov/pubs/fips/205/final)
-- [Bouncy Castle Java Documentation](https://www.bouncycastle.org/documentation/documentation-java/)
-- [Bouncy Castle GitHub](https://github.com/bcgit/bc-java)
+---
 
 ## License
-
 Apache 2.0
-
-## Contributing
-
-*Add contribution guidelines here*
