@@ -258,9 +258,9 @@ public class PqcCsrGenerator {
 
 			System.out.println("    Subject Alt Names: " + Arrays.toString(sanStrings));
 			// Pass the parsed GeneralName array to your builder
-			csr = buildCsrWithExtensions(keyPair, config.signerAlg(), sanNames);
+			csr = buildCsrWithExtensions(keyPair, SUBJECT_DN, config.signerAlg(), sanNames);
 		} else {
-			csr = buildCsr(keyPair, config.signerAlg());
+			csr = buildCsr(keyPair, SUBJECT_DN, config.signerAlg());
 		}
 
 		System.out.println("[+] CSR created and self-signed.");
@@ -366,50 +366,55 @@ public class PqcCsrGenerator {
 	 * Builds a basic PKCS#10 CSR for the given key pair.
 	 *
 	 * @param keyPair the key pair (public key goes in CSR, private key signs it)
+	 * @param subjectDn The X.500 Distinguished Name for the certificate subject.
 	 * @param sigAlg signature algorithm name
 	 * @return the CSR
 	 * @throws Exception if CSR building fails
 	 */
 	private static PKCS10CertificationRequest buildCsr(
-			KeyPair keyPair, String sigAlg) throws Exception {
+			KeyPair keyPair, String subjectDn, String sigAlg) throws Exception {
 
 		ContentSigner signer = new JcaContentSignerBuilder(sigAlg)
 				.build(keyPair.getPrivate());
 
-		return new JcaPKCS10CertificationRequestBuilder(
-				new X500Name(PqcCsrGenerator.SUBJECT_DN),
-				keyPair.getPublic()
-		).build(signer);
+		return new JcaPKCS10CertificationRequestBuilder(new X500Name(subjectDn), keyPair.getPublic())
+				.build(signer);
 	}
 
 	/**
 	 * Builds a PKCS#10 Certification Request (CSR) including X.509 extensions.
 	 *
 	 * <p>This method constructs the CSR using the provided key pair and subject DN,
-	 * then adds the requested extensions (such as Subject Alternative Names) to the attribute set before signing the
-	 * request with the specified algorithm.</p>
+	 * then adds the requested extensions (such as Subject Alternative Names) to the
+	 * attribute set before signing the request with the specified algorithm.</p>
 	 *
-	 * @param keyPair The {@link KeyPair} containing the public key for the CSR and the private key used for signing.
-	 * @param sigAlg The signing algorithm to be used (e.g., "ML-DSA-65").
-	 * @param sans An array of {@link GeneralName} objects to be included in the Subject Alternative Name extension.
+	 * @param keyPair   The {@link KeyPair} containing the public key for the CSR and the
+	 * private key used for signing.
+	 * @param subjectDn The X.500 Distinguished Name for the certificate subject.
+	 * @param sigAlg    The signing algorithm to be used (e.g., "ML-DSA-65").
+	 * @param sans      An array of {@link GeneralName} objects to be included in the
+	 * Subject Alternative Name extension.
 	 * @return A signed {@link PKCS10CertificationRequest} object.
 	 * @throws Exception if there is an error building the extension request or signing the CSR.
 	 */
-	private static PKCS10CertificationRequest buildCsrWithExtensions(KeyPair keyPair, String sigAlg,
+	private static PKCS10CertificationRequest buildCsrWithExtensions(
+			KeyPair keyPair,
+			String subjectDn,
+			String sigAlg,
 			GeneralName[] sans) throws Exception {
 
 		ExtensionsGenerator extGen = new ExtensionsGenerator();
 		extGen.addExtension(Extension.subjectAlternativeName, false, new GeneralNames(sans));
 
 		PKCS10CertificationRequestBuilder builder = new JcaPKCS10CertificationRequestBuilder(
-				new X500Name(PqcCsrGenerator.SUBJECT_DN),
+				new X500Name(subjectDn),
 				keyPair.getPublic()
 		);
 
 		builder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extGen.generate());
 
+		// Removing .setProvider("BCPQC") to match your working buildCsr method
 		ContentSigner signer = new JcaContentSignerBuilder(sigAlg)
-				.setProvider("BCPQC")
 				.build(keyPair.getPrivate());
 
 		return builder.build(signer);
