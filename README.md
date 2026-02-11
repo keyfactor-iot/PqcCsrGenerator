@@ -56,15 +56,17 @@ docker compose up --build
 ---
 
 ### 3. Customizing the Execution
-You can override the algorithm, the Certificate Subject DN, or **Subject Alternative Names (SAN)** by modifying the `command` or `environment` sections in `docker-compose.yaml`.
+The generator supports custom Subject DNs and multiple types of Subject Alternative Names (SANs). It automatically detects and correctly tags DNS names, IP addresses, URIs, and Email addresses.
 
-The tool automatically detects if a SAN is a DNS name or an IP address and encodes it correctly in the X.509 extension.
+#### **Quoting Rules**
+When running via `docker compose`, wrap the entire `JAVA_OPTS` string in double quotes. Do **not** use internal quotes for the individual property values, as this can cause parsing errors in the Java backend.
 
-**To change the Subject DN, SAN (DNS & IP), or Algorithm on the fly:**
+#### **Example: Complex CSR with SANs**
+This example generates an **ML-DSA-65** CSR with a custom subject and three different types of SAN extensions (DNS, IP, and Email).
+
 ```bash
-# Example: Custom Subject with both DNS and IP Address SANs
 docker compose run --rm \
-  -e JAVA_OPTS="-Dcsr.subject='CN=PQC-Server,O=Keyfactor,C=US' -Dcsr.san='pqc.local,192.168.1.100' -Dcsr.outdir=/output" \
+  -e JAVA_OPTS="-Dcsr.subject=CN=PQC-Server,O=Keyfactor,C=US -Dcsr.san=pqc.local,192.168.1.100,dev@keyfactor.com -Dcsr.outdir=/output" \
   pqc-gen "ML-DSA-65"
 ```
 
