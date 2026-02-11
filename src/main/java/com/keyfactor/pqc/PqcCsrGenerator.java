@@ -54,6 +54,7 @@ import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider;
 import org.bouncycastle.pqc.jcajce.spec.FalconParameterSpec;
@@ -204,7 +205,7 @@ public class PqcCsrGenerator {
 	/**
 	 * Generates CSRs for all supported algorithms.
 	 */
-	private static void generateAll() throws Exception {
+	private static void generateAll() {
 		System.out.println("Generating CSRs for all " + ALGORITHMS.size() + " algorithms...\n");
 
 		int success = 0;
@@ -247,11 +248,19 @@ public class PqcCsrGenerator {
 
 		PKCS10CertificationRequest csr;
 		if (!SUBJECT_ALT_NAMES.isBlank()) {
-			String[] sans = SUBJECT_ALT_NAMES.split(",");
-			System.out.println("    Subject Alt Names: " + Arrays.toString(sans));
-			csr = buildCsrWithExtensions(keyPair, SUBJECT_DN, config.signerAlg(), sans);
+			String[] sanStrings = SUBJECT_ALT_NAMES.split(",");
+			GeneralName[] sanNames = new GeneralName[sanStrings.length];
+
+			for (int i = 0; i < sanStrings.length; i++) {
+				String name = sanStrings[i].trim();
+				sanNames[i] = parseGeneralName(name);
+			}
+
+			System.out.println("    Subject Alt Names: " + Arrays.toString(sanStrings));
+			// Pass the parsed GeneralName array to your builder
+			csr = buildCsrWithExtensions(keyPair, config.signerAlg(), sanNames);
 		} else {
-			csr = buildCsr(keyPair, SUBJECT_DN, config.signerAlg());
+			csr = buildCsr(keyPair, config.signerAlg());
 		}
 
 		System.out.println("[+] CSR created and self-signed.");
@@ -329,64 +338,81 @@ public class PqcCsrGenerator {
 	// ══════════════════════════════════════════════════════════════════
 
 	/**
+	 * Parses a string to determine the correct X.509 GeneralName tag.
+	 * * <p>This method evaluates the input string to identify its format and maps it
+	 * to the corresponding X.509 GeneralName type. It supports IP addresses (v4/v6),
+	 * URIs, Email addresses (RFC822), and defaults to DNS names.</p>
+	 * * @param name The string representation of the Subject Alternative Name (SAN).
+	 * @return A {@link GeneralName} object configured with the identified type tag.
+	 */
+	private static GeneralName parseGeneralName(String name) {
+		// 1. Check for IP Address (v4 or v6)
+		if (name.matches("^[0-9a-fA-F.:]+$") && (name.contains(".") || name.contains(":"))) {
+			return new GeneralName(GeneralName.iPAddress, name);
+		}
+		// 2. Check for URI
+		if (name.contains("://")) {
+			return new GeneralName(GeneralName.uniformResourceIdentifier, name);
+		}
+		// 3. Check for Email (RFC822)
+		if (name.contains("@") && !name.contains("/")) {
+			return new GeneralName(GeneralName.rfc822Name, name);
+		}
+		// 4. Default to DNS
+		return new GeneralName(GeneralName.dNSName, name);
+	}
+
+	/**
 	 * Builds a basic PKCS#10 CSR for the given key pair.
 	 *
-	 * @param keyPair   the key pair (public key goes in CSR, private key signs it)
-	 * @param subjectDn X.500 distinguished name for the subject
-	 * @param sigAlg    signature algorithm name
+	 * @param keyPair the key pair (public key goes in CSR, private key signs it)
+	 * @param sigAlg signature algorithm name
 	 * @return the CSR
 	 * @throws Exception if CSR building fails
 	 */
 	private static PKCS10CertificationRequest buildCsr(
-			KeyPair keyPair, String subjectDn, String sigAlg) throws Exception {
+			KeyPair keyPair, String sigAlg) throws Exception {
 
 		ContentSigner signer = new JcaContentSignerBuilder(sigAlg)
 				.build(keyPair.getPrivate());
 
 		return new JcaPKCS10CertificationRequestBuilder(
-				new X500Name(subjectDn),
+				new X500Name(PqcCsrGenerator.SUBJECT_DN),
 				keyPair.getPublic()
 		).build(signer);
 	}
 
 	/**
-	 * Builds a PKCS#10 CSR with Subject Alternative Name (SAN) extensions.
+	 * Builds a PKCS#10 Certification Request (CSR) including X.509 extensions.
 	 *
-	 * <p>This demonstrates adding extensions to a CSR, which is common in production
-	 * environments where certificates need to be valid for multiple DNS names.</p>
+	 * <p>This method constructs the CSR using the provided key pair and subject DN,
+	 * then adds the requested extensions (such as Subject Alternative Names) to the attribute set before signing the
+	 * request with the specified algorithm.</p>
 	 *
-	 * @param keyPair   the key pair
-	 * @param subjectDn X.500 distinguished name for the subject
-	 * @param sigAlg    signature algorithm name
-	 * @param dnsNames  array of DNS names to include as SANs
-	 * @return the CSR with extensions
-	 * @throws Exception if CSR building fails
+	 * @param keyPair The {@link KeyPair} containing the public key for the CSR and the private key used for signing.
+	 * @param sigAlg The signing algorithm to be used (e.g., "ML-DSA-65").
+	 * @param sans An array of {@link GeneralName} objects to be included in the Subject Alternative Name extension.
+	 * @return A signed {@link PKCS10CertificationRequest} object.
+	 * @throws Exception if there is an error building the extension request or signing the CSR.
 	 */
-	private static PKCS10CertificationRequest buildCsrWithExtensions(
-			KeyPair keyPair, String subjectDn, String sigAlg, String... dnsNames) throws Exception {
+	private static PKCS10CertificationRequest buildCsrWithExtensions(KeyPair keyPair, String sigAlg,
+			GeneralName[] sans) throws Exception {
 
-		// Build SAN extension
 		ExtensionsGenerator extGen = new ExtensionsGenerator();
+		extGen.addExtension(Extension.subjectAlternativeName, false, new GeneralNames(sans));
 
-		GeneralName[] sanArray = Arrays.stream(dnsNames)
-				.map(String::trim)
-				.filter(s -> !s.isEmpty())
-				.map(dns -> new GeneralName(GeneralName.dNSName, dns))
-				.toArray(GeneralName[]::new);
+		PKCS10CertificationRequestBuilder builder = new JcaPKCS10CertificationRequestBuilder(
+				new X500Name(PqcCsrGenerator.SUBJECT_DN),
+				keyPair.getPublic()
+		);
 
-		if (sanArray.length > 0) {
-			GeneralNames sans = new GeneralNames(sanArray);
-			extGen.addExtension(Extension.subjectAlternativeName, false, sans);
-		}
+		builder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extGen.generate());
 
-		// Build CSR with extensions
 		ContentSigner signer = new JcaContentSignerBuilder(sigAlg)
-				.setProvider("BC")
+				.setProvider("BCPQC")
 				.build(keyPair.getPrivate());
 
-		return new JcaPKCS10CertificationRequestBuilder(new X500Name(subjectDn), keyPair.getPublic())
-				.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extGen.generate())
-				.build(signer);
+		return builder.build(signer);
 	}
 
 	// ══════════════════════════════════════════════════════════════════

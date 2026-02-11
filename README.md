@@ -35,28 +35,42 @@ mkdir out
 ```
 
 ### 2. Build and Run
-The simplest way to run the tool is using Docker Compose. This will build the container and run the default algorithm (**ML-DSA-65**):
+The simplest way to run the tool is using Docker Compose. This method ensures that file permissions are handled correctly on Linux (Ubuntu) while maintaining the flexibility to customize your CSR.
+
+#### **Initialize Environment**
+Before running the container, set your local user and group IDs. This handles the `readonly` variable restriction on Linux and ensures that the generated files in the `out/` folder are owned by you rather than `root`.
 
 ```bash
-# On Mac or Windows (Docker Desktop)
-docker-compose up --build
-
-# On Linux (Fixes file permission issues)
-UID=$(id -u) GID=$(id -g) docker-compose up --build
+# Create the environment file (Run this once)
+echo "CURRENT_UID=$(id -u)" > .env
+echo "CURRENT_GID=$(id -g)" >> .env
 ```
+
+#### **Execution**
+Build the container and run the generator. By default, this will generate a CSR using the **ML-DSA-65** algorithm.
+
+```bash
+# Works on Mac, Windows, and Linux
+docker compose up --build
+```
+---
 
 ### 3. Customizing the Execution
-You can override the algorithm or subject DN by passing arguments to `docker-compose run`. This command spins up a fresh container for a single execution:
+You can override the algorithm, the Certificate Subject DN, or **Subject Alternative Names (SAN)** by modifying the `command` or `environment` sections in `docker-compose.yaml`.
 
-**Generate a specific algorithm:**
+The tool automatically detects if a SAN is a DNS name or an IP address and encodes it correctly in the X.509 extension.
+
+**To change the Subject DN, SAN (DNS & IP), or Algorithm on the fly:**
 ```bash
-docker-compose run --rm pqc-gen "SLH-DSA-SHA2-128s"
+# Example: Custom Subject with both DNS and IP Address SANs
+docker compose run --rm \
+  -e JAVA_OPTS="-Dcsr.subject='CN=PQC-Server,O=Keyfactor,C=US' -Dcsr.san='pqc.local,192.168.1.100' -Dcsr.outdir=/output" \
+  pqc-gen "ML-DSA-65"
 ```
 
-**Generate with a custom Subject DN:**
-```bash
-docker-compose run --rm pqc-gen -Dcsr.subject="CN=Keyfactor-PQC,O=Keyfactor,C=US" "ML-DSA-87"
-```
+### Troubleshooting
+* **"readonly variable" error:** If you see `UID: readonly variable`, ensure you are using the `CURRENT_UID` approach in the `.env` file rather than trying to assign to the protected shell variable `UID`.
+* **Help menu appears instead of generating CSR:** Java is strict about argument order. Ensure system properties (`-D`) are in the `JAVA_OPTS` and the algorithm name (e.g., `ML-DSA-65`) is the last argument.
 
 ### Troubleshooting Docker
 * **Empty `out` directory:** Ensure you are running the docker command from the same folder that contains the `docker-compose.yaml` and `out` directory.

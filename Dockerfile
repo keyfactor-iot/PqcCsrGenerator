@@ -7,9 +7,8 @@ RUN mvn clean package -DskipTests
 FROM eclipse-temurin:24-jre
 WORKDIR /app
 COPY --from=build /app/target/PqcCsrGenerator.jar app.jar
-
-# Create a wrapper script to fix the Java argument order
-RUN echo '#!/bin/sh\nprops=""\nargs=""\nfor arg in "$@"; do\n  case $arg in\n    -D*) props="$props $arg" ;;\n    *) args="$args $arg" ;;\n  esac\ndone\nexec java $props -jar app.jar $args' > /entrypoint.sh && chmod +x /entrypoint.sh
-
+RUN chmod 644 app.jar
 RUN mkdir /output && chmod 777 /output
-ENTRYPOINT ["/entrypoint.sh"]
+
+# Using the exec form ["/bin/sh", "-c", ...] allows us to pass arguments to the shell
+ENTRYPOINT ["/bin/sh", "-c", "java ${JAVA_OPTS} -jar app.jar \"$@\"", "--"]

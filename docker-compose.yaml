@@ -1,6 +1,9 @@
 services:
   pqc-gen:
     build: .
+    user: "${CURRENT_UID}:${CURRENT_GID}"
     volumes:
       - ./out:/output
-    command: ["-Dcsr.outdir=/output", "-Dcsr.subject=CN=My-PQC-Test,O=Keyfactor,C=US", "ML-DSA-65"]
+    environment:
+      - JAVA_OPTS=-Dcsr.outdir=/output -Dcsr.subject=CN=PQC-Universal-Test,O=Keyfactor,C=US
+    command: ["ML-DSA-87"]
